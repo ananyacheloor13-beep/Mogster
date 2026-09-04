@@ -442,9 +442,9 @@ const heroCtaBtn = document.getElementById('heroCtaBtn');
 if (heroCtaBtn) {
     heroCtaBtn.addEventListener('click', (e) => {
         e.preventDefault();
-        const target = document.getElementById('upload-section') || document.getElementById('uploadSection');
+        const target = document.querySelector('#upload-section') || document.getElementById('uploadSection');
         if (target) {
-            target.scrollIntoView({ behavior: 'smooth' });
+            target.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }
     });
 }
