@@ -117,9 +117,9 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
         const modelsToTry = [
             process.env.GEMINI_MODEL,
             'gemini-3.8-flash',
-            'gemini-2.5-flash',
-            'gemini-2.0-flash',
-            'gemini-1.5-flash'
+            // 'gemini-2.5-flash',
+            // 'gemini-2.0-flash',
+            // 'gemini-1.5-flash'
         ].filter(Boolean);
 
         let responseText = '';
