@@ -351,19 +351,60 @@ let currentImageData = null;
 let currentIndicators = [];
 let currentApiResponse = null; // Store real API response
 
+// Compress and resize image client-side before sending to serverless API
+function compressImage(file, maxDimension = 1024, quality = 0.85) {
+    return new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = (e) => {
+            const img = new Image();
+            img.onload = () => {
+                let { width, height } = img;
+                if (width > maxDimension || height > maxDimension) {
+                    if (width > height) {
+                        height = Math.round((height * maxDimension) / width);
+                        width = maxDimension;
+                    } else {
+                        width = Math.round((width * maxDimension) / height);
+                        height = maxDimension;
+                    }
+                }
+                const canvas = document.createElement('canvas');
+                canvas.width = width;
+                canvas.height = height;
+                const ctx = canvas.getContext('2d');
+                ctx.drawImage(img, 0, 0, width, height);
+                const compressedDataUrl = canvas.toDataURL('image/jpeg', quality);
+                resolve(compressedDataUrl);
+            };
+            img.onerror = () => reject(new Error('Failed to load image file'));
+            img.src = e.target.result;
+        };
+        reader.onerror = () => reject(new Error('Failed to read image file'));
+        reader.readAsDataURL(file);
+    });
+}
+
 // Handle file upload
-photoInput.addEventListener('change', (e) => {
+photoInput.addEventListener('change', async (e) => {
     const file = e.target.files[0];
     if (file) {
-        // Show the image preview and start loading
-        const reader = new FileReader();
-        reader.onload = (event) => {
-            const imageData = event.target.result;
-            currentImageData = imageData;
-            resultImage.src = imageData;
-            startAnalysis(imageData, file.type);
-        };
-        reader.readAsDataURL(file);
+        try {
+            // Compress and resize image to avoid Vercel 4.5MB payload limit
+            const compressedDataUrl = await compressImage(file, 1024, 0.85);
+            currentImageData = compressedDataUrl;
+            resultImage.src = compressedDataUrl;
+            startAnalysis(compressedDataUrl, 'image/jpeg');
+        } catch (err) {
+            console.warn('Image compression failed, using original file:', err);
+            const reader = new FileReader();
+            reader.onload = (event) => {
+                const imageData = event.target.result;
+                currentImageData = imageData;
+                resultImage.src = imageData;
+                startAnalysis(imageData, file.type || 'image/jpeg');
+            };
+            reader.readAsDataURL(file);
+        }
     }
 });
 
@@ -446,39 +487,58 @@ async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     } catch (error) {
         console.error('Analysis error:', error);
         
-        // Show error message in loading section
+        // Show detailed error message in loading section
         indicatorsList.innerHTML = '';
         const errorDiv = document.createElement('div');
         errorDiv.className = 'indicator-item';
         errorDiv.style.color = '#d32f2f';
-        errorDiv.innerHTML = `<span class="indicator-verdict">${error.message}</span>`;
+        errorDiv.style.borderLeftColor = '#d32f2f';
+        errorDiv.innerHTML = `<strong>Analysis Failed:</strong><br><span class="indicator-verdict">${error.message}</span>`;
         indicatorsList.appendChild(errorDiv);
         
-        // Show retry button
+        // Show retry and offline fallback buttons
         setTimeout(() => {
+            const btnContainer = document.createElement('div');
+            btnContainer.style.marginTop = '25px';
+            btnContainer.style.display = 'flex';
+            btnContainer.style.gap = '12px';
+            btnContainer.style.justifyContent = 'center';
+            btnContainer.style.flexWrap = 'wrap';
+
             const retryBtn = document.createElement('button');
-            retryBtn.textContent = 'Try Again';
-            retryBtn.style.marginTop = '20px';
+            retryBtn.textContent = '🔄 Try Again';
+            retryBtn.className = 'confirm-name-btn';
             retryBtn.style.padding = '10px 20px';
-            retryBtn.style.cursor = 'pointer';
-            retryBtn.style.backgroundColor = '#667eea';
-            retryBtn.style.color = 'white';
-            retryBtn.style.border = 'none';
-            retryBtn.style.borderRadius = '8px';
-            retryBtn.style.fontSize = '1em';
             retryBtn.addEventListener('click', () => {
                 uploadSection.classList.remove('hidden');
                 loadingSection.classList.add('hidden');
                 photoInput.value = '';
             });
-            indicatorsList.appendChild(retryBtn);
-        }, 500);
+
+            const offlineBtn = document.createElement('button');
+            offlineBtn.textContent = '⚡ Use Offline Demo Mode';
+            offlineBtn.className = 'back-btn';
+            offlineBtn.style.padding = '10px 20px';
+            offlineBtn.style.backgroundColor = '#667eea';
+            offlineBtn.style.color = 'white';
+            offlineBtn.addEventListener('click', () => {
+                currentApiResponse = null;
+                currentRating = getRandomRating();
+                currentIndicators = selectRandomIndicators();
+                showNameInput();
+            });
+
+            btnContainer.appendChild(retryBtn);
+            btnContainer.appendChild(offlineBtn);
+            indicatorsList.appendChild(btnContainer);
+        }, 400);
     }
 }
 
 /**
  * Fetch analysis from /api/rate with timeout
  * @param {string} base64Image - Base64-encoded image without prefix
+ * @param {string} mimeType - Image MIME type
  * @param {number} timeoutMs - Timeout in milliseconds
  * @returns {Promise<Object>} - Analysis response with score, clinicalFindings, verdict
  */
@@ -499,14 +559,30 @@ async function fetchAnalysisWithTimeout(base64Image, mimeType, timeoutMs) {
         clearTimeout(timeoutId);
         
         if (!response.ok) {
-            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-            throw new Error(errorData.error || `API error: ${response.status}`);
+            const errorText = await response.text();
+            let errorData;
+            try {
+                errorData = JSON.parse(errorText);
+            } catch (e) {
+                errorData = { error: errorText || `HTTP ${response.status}` };
+            }
+
+            let errorMsg = errorData.details && errorData.details !== errorData.error
+                ? `${errorData.error} (${errorData.details})`
+                : (errorData.error || `API error: ${response.status}`);
+
+            // Specific detection for VS Code Live Preview / local static servers
+            if (errorMsg.toLowerCase().includes('trusted folder') || (response.status === 403 && window.location.hostname.includes('127.0.0.1'))) {
+                errorMsg = 'You are testing in VS Code Live Preview, which cannot execute backend functions (/api/rate). Open your deployed Vercel link (e.g. https://your-project.vercel.app) in your web browser, or click "Use Offline Demo Mode" below.';
+            }
+
+            throw new Error(errorMsg);
         }
         
         const data = await response.json();
         
         // Validate response structure
-        if (!data.score || !data.clinicalFindings || !data.verdict) {
+        if (typeof data.score !== 'number' || !data.clinicalFindings || !data.verdict) {
             throw new Error('Invalid response format from server');
         }
         
@@ -515,10 +591,10 @@ async function fetchAnalysisWithTimeout(base64Image, mimeType, timeoutMs) {
         clearTimeout(timeoutId);
         
         if (error.name === 'AbortError') {
-            throw new Error('Request timed out. Please check your connection and try again.');
+            throw new Error('Request timed out (30s). Check your connection and try again.');
         }
         
-        throw new Error(error.message || 'Failed to analyze image. Please try again.');
+        throw error;
     }
 }
 
