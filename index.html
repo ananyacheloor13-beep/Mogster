@@ -1,1 +1,83 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mogster - Rate Objects Like They're Faces</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <div class="container">
+        <h1>🏆 MOGSTER 🏆</h1>
+        <p class="subtitle">Im your main plug to analyze the mogging statistics.</p>
+        
+        <div class="button-bar">
+            <button id="leaderboardBtn" class="leaderboard-btn">View Leaderboard</button>
+            <button id="clearLeaderboardBtn" class="clear-btn">Clear</button>
+        </div>
 
+        <!-- Upload Section -->
+        <div id="uploadSection" class="section">
+            <div class="upload-box">
+                <input type="file" id="photoInput" accept="image/*">
+                <label for="photoInput" class="upload-label">
+                    <span class="upload-icon">📸</span>
+                    <span>Click to upload a photo of your object</span>
+                    <span class="upload-hint">(rock, chair, shoe, URanus, whatever)</span>
+                </label>
+            </div>
+        </div>
+
+        <!-- Loading Section -->
+        <div id="loadingSection" class="section hidden">
+            <div class="loading-container">
+                <div class="spinner"></div>
+                <p class="loading-text">Facecard Analysis in Progress...</p>
+                <div id="indicatorsList" class="indicators-list">
+                    <!-- Indicators will be added here -->
+                </div>
+            </div>
+        </div>
+
+        <!-- Name Input Section -->
+        <div id="nameInputSection" class="section hidden">
+            <div class="name-input-container">
+                <h2>What's the name of this mog?</h2>
+                <input type="text" id="mogName" placeholder="e.g., Rock, Balls, Jonathan" maxlength="30">
+                <button id="confirmNameBtn" class="confirm-name-btn">Save & View Rating</button>
+            </div>
+        </div>
+
+        <!-- Results Section -->
+        <div id="resultsSection" class="section hidden">
+            <div class="results-container">
+                <img id="resultImage" class="result-image" src="" alt="Uploaded object">
+                
+                <div class="rating-box">
+                    <p class="rating-label">OVERALL MOG RATING</p>
+                    <p id="ratingScore" class="rating-score">8/10</p>
+                </div>
+
+                <div class="explanation-box">
+                    <p id="explanation" class="explanation-text"></p>
+                </div>
+
+                <button id="tryAgainBtn" class="try-again-btn">Rate Another Mog</button>
+            </div>
+        </div>
+
+        <!-- Leaderboard Section -->
+        <div id="leaderboardSection" class="section hidden">
+            <div class="leaderboard-container">
+                <h2>🏆 MOGSTER LEADERBOARD 🏆</h2>
+                <div id="leaderboardList" class="leaderboard-list">
+                    <!-- Entries will be added here -->
+                </div>
+                <button id="backFromLeaderboardBtn" class="back-btn">Back to Rating</button>
+            </div>
+        </div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
