@@ -4,29 +4,42 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Mogster - Rate Objects Like They're Faces</title>
-    <link rel="stylesheet" href="style.css?v=2">
+    <link rel="stylesheet" href="style.css?v=3">
 </head>
 <body>
-    <div class="container">
-        <h1>🏆 MOGSTER 🏆</h1>
-        <p class="subtitle">Im your main plug to analyze the mogging statistics.</p>
-        
-        <div class="button-bar">
-            <button id="leaderboardBtn" class="leaderboard-btn">View Leaderboard</button>
-            <button id="clearLeaderboardBtn" class="clear-btn">Clear</button>
+    <!-- Hero Section -->
+    <header class="hero-section" id="heroSection">
+        <div class="hero-content">
+            <h1 class="hero-headline">My only job is to judge</h1>
+            <p class="hero-subtext">Whatever object you upload, I will brutally judge how much it mogs.</p>
+            <a href="#upload-section" class="hero-btn" id="heroCtaBtn">Try me rn</a>
         </div>
+    </header>
 
-        <!-- Upload Section -->
-        <div id="uploadSection" class="section">
-            <div class="upload-box">
-                <input type="file" id="photoInput" accept="image/*">
-                <label for="photoInput" class="upload-label">
-                    <span class="upload-icon">📸</span>
-                    <span>Click to upload a photo of your object</span>
-                    <span class="upload-hint">(rock, chair, shoe, URanus, whatever)</span>
-                </label>
+    <!-- Main Content Section -->
+    <main class="main-wrapper" id="mainWrapper">
+        <div class="container">
+            <h1>🏆 MOGSTER 🏆</h1>
+            <p class="subtitle">Im your main plug to analyze the mogging statistics.</p>
+            
+            <div class="button-bar">
+                <button id="leaderboardBtn" class="leaderboard-btn">View Leaderboard</button>
+                <button id="clearLeaderboardBtn" class="clear-btn">Clear</button>
             </div>
-        </div>
+
+            <!-- Upload Section -->
+            <div id="upload-section">
+                <div id="uploadSection" class="section">
+                    <div class="upload-box">
+                        <input type="file" id="photoInput" accept="image/*">
+                        <label for="photoInput" class="upload-label">
+                            <span class="upload-icon">📸</span>
+                            <span>Click to upload a photo of your object</span>
+                            <span class="upload-hint">(rock, chair, shoe, URanus, whatever)</span>
+                        </label>
+                    </div>
+                </div>
+            </div>
 
         <!-- Loading Section -->
         <div id="loadingSection" class="section hidden">
@@ -77,7 +90,8 @@
             </div>
         </div>
     </div>
+</main>
 
-    <script src="script.js?v=2"></script>
+    <script src="script.js?v=5"></script>
 </body>
 </html>

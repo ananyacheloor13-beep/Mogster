@@ -326,7 +326,7 @@ const closingStatements = [
 
 // Dom elements
 const photoInput = document.getElementById('photoInput');
-const uploadSection = document.getElementById('uploadSection');
+const uploadSection = document.getElementById('uploadSection') || document.getElementById('upload-section');
 const loadingSection = document.getElementById('loadingSection');
 const nameInputSection = document.getElementById('nameInputSection');
 const resultsSection = document.getElementById('resultsSection');
@@ -437,6 +437,18 @@ clearLeaderboardBtn.addEventListener('click', () => {
     }
 });
 
+// Handle hero CTA button smooth scroll
+const heroCtaBtn = document.getElementById('heroCtaBtn');
+if (heroCtaBtn) {
+    heroCtaBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const target = document.getElementById('upload-section') || document.getElementById('uploadSection');
+        if (target) {
+            target.scrollIntoView({ behavior: 'smooth' });
+        }
+    });
+}
+
 async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     // Hide upload, show loading
     uploadSection.classList.add('hidden');
@@ -453,7 +465,7 @@ async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
         const base64Image = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1].trim() : imageDataUrl.trim();
         
         // Call the API with timeout
-        const analysisData = await fetchAnalysisWithTimeout(base64Image, mimeType, 30000); // 30 second timeout
+        const analysisData = await fetchAnalysisWithTimeout(base64Image, mimeType, 45000); // 45 second timeout
         
         // Store the API response
         currentApiResponse = analysisData;
@@ -591,7 +603,8 @@ async function fetchAnalysisWithTimeout(base64Image, mimeType, timeoutMs) {
         clearTimeout(timeoutId);
         
         if (error.name === 'AbortError') {
-            throw new Error('Request timed out (30s). Check your connection and try again.');
+            const secs = Math.round(timeoutMs / 1000);
+            throw new Error(`Request timed out (${secs}s). Check your connection and try again.`);
         }
         
         throw error;

@@ -26,17 +26,25 @@ export default async function handler(req, res) {
 
         try {
             const ai = new GoogleGenAI({ apiKey });
+            // Verify key works with Gemini 2.0 Flash
+            const testResponse = await ai.models.generateContent({
+                model: 'gemini-2.0-flash',
+                contents: 'Respond with "pong"'
+            });
+
             return res.status(200).json({
                 status: 'ok',
-                message: 'Gemini API key is configured with @google/genai SDK and ready for gemini-3.8-flash!',
+                message: 'Gemini API key is configured and verified with gemini-2.0-flash!',
                 hasKey: true,
-                keyPrefix: apiKey.slice(0, 6) + '...'
+                keyPrefix: apiKey.slice(0, 6) + '...',
+                pingResponse: testResponse.text?.trim()
             });
         } catch (err) {
             return res.status(200).json({
                 status: 'error',
-                message: `SDK Initialization error: ${err.message}`,
-                hasKey: true
+                message: `Gemini API ping error: ${extractErrorMsg(err)}`,
+                hasKey: true,
+                keyPrefix: apiKey.slice(0, 6) + '...'
             });
         }
     }
@@ -113,11 +121,9 @@ Return your response as VALID JSON ONLY (no markdown, no explanations) with this
 
 Do not include any text outside the JSON. Respond with only valid JSON.`;
 
-        // Call multimodal Gemini: Try Interactions API first (as in docs), with generateContent fallback
+        // Supported Gemini multimodal models (primary: 2.0 Flash for ultra-fast response, fallback: 1.5 Flash)
         const modelsToTry = [
             process.env.GEMINI_MODEL,
-            'gemini-3.8-flash',
-            'gemini-2.5-flash',
             'gemini-2.0-flash',
             'gemini-1.5-flash'
         ].filter(Boolean);
@@ -127,57 +133,36 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
 
         for (const model of modelsToTry) {
             try {
-                // Method 1: Interactions API (official docs pattern)
-                const interaction = await ai.interactions.create({
+                console.log(`Analyzing image with model: ${model}`);
+                const genResponse = await ai.models.generateContent({
                     model: model,
-                    input: [
-                        { type: 'text', text: prompt },
+                    contents: [
+                        prompt,
                         {
-                            type: 'image',
-                            data: cleanBase64,
-                            mime_type: mimeType || 'image/jpeg'
+                            inlineData: {
+                                data: cleanBase64,
+                                mimeType: mimeType || 'image/jpeg'
+                            }
                         }
-                    ]
+                    ],
+                    config: {
+                        responseMimeType: 'application/json'
+                    }
                 });
 
-                responseText = interaction.output_text || '';
-                if (responseText) break;
-            } catch (interactionErr) {
-                const errMsg = extractErrorMsg(interactionErr);
-                console.warn(`Interactions API failed for ${model}:`, errMsg);
-
-                // If API key is rejected, no model will work
-                if (errMsg.includes('API key') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('403')) {
-                    throw new Error(errMsg);
+                responseText = genResponse.text || '';
+                if (responseText) {
+                    console.log(`Analysis succeeded with model: ${model}`);
+                    break;
                 }
+            } catch (err) {
+                const errMsg = extractErrorMsg(err);
+                lastError = new Error(errMsg);
+                console.warn(`generateContent failed for ${model}:`, errMsg);
 
-                // Method 2: Standard generateContent multimodal fallback
-                try {
-                    const genResponse = await ai.models.generateContent({
-                        model: model,
-                        contents: [
-                            prompt,
-                            {
-                                inlineData: {
-                                    data: cleanBase64,
-                                    mimeType: mimeType || 'image/jpeg'
-                                }
-                            }
-                        ],
-                        config: {
-                            responseMimeType: 'application/json'
-                        }
-                    });
-
-                    responseText = genResponse.text || '';
-                    if (responseText) break;
-                } catch (genErr) {
-                    const genErrMsg = extractErrorMsg(genErr);
-                    lastError = new Error(genErrMsg);
-                    console.warn(`generateContent failed for ${model}:`, genErrMsg);
-                    if (genErrMsg.includes('API key') || genErrMsg.includes('API_KEY_INVALID') || genErrMsg.includes('403')) {
-                        throw lastError;
-                    }
+                // If API key is rejected or invalid, fail immediately without trying remaining models
+                if (errMsg.includes('API key') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('403')) {
+                    throw lastError;
                 }
             }
         }
