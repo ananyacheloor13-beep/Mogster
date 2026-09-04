@@ -113,13 +113,13 @@ Return your response as VALID JSON ONLY (no markdown, no explanations) with this
 
 Do not include any text outside the JSON. Respond with only valid JSON.`;
 
-        // Call Gemini using Interactions API with gemini-3.8-flash (with fallbacks)
+        // Call multimodal Gemini: Try Interactions API first (as in docs), with generateContent fallback
         const modelsToTry = [
             process.env.GEMINI_MODEL,
             'gemini-3.8-flash',
-            // 'gemini-2.5-flash',
-            // 'gemini-2.0-flash',
-            // 'gemini-1.5-flash'
+            'gemini-2.5-flash',
+            'gemini-2.0-flash',
+            'gemini-1.5-flash'
         ].filter(Boolean);
 
         let responseText = '';
@@ -127,6 +127,7 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
 
         for (const model of modelsToTry) {
             try {
+                // Method 1: Interactions API (official docs pattern)
                 const interaction = await ai.interactions.create({
                     model: model,
                     input: [
@@ -141,13 +142,42 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
 
                 responseText = interaction.output_text || '';
                 if (responseText) break;
-            } catch (err) {
-                lastError = err;
-                console.warn(`Model ${model} via interactions failed: ${err.message}`);
+            } catch (interactionErr) {
+                const errMsg = extractErrorMsg(interactionErr);
+                console.warn(`Interactions API failed for ${model}:`, errMsg);
 
-                // Abort early if the API key is unauthorized/invalid
-                if (err.message.includes('API_KEY_INVALID') || err.message.includes('API key not valid') || err.message.includes('403')) {
-                    throw err;
+                // If API key is rejected, no model will work
+                if (errMsg.includes('API key') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('403')) {
+                    throw new Error(errMsg);
+                }
+
+                // Method 2: Standard generateContent multimodal fallback
+                try {
+                    const genResponse = await ai.models.generateContent({
+                        model: model,
+                        contents: [
+                            prompt,
+                            {
+                                inlineData: {
+                                    data: cleanBase64,
+                                    mimeType: mimeType || 'image/jpeg'
+                                }
+                            }
+                        ],
+                        config: {
+                            responseMimeType: 'application/json'
+                        }
+                    });
+
+                    responseText = genResponse.text || '';
+                    if (responseText) break;
+                } catch (genErr) {
+                    const genErrMsg = extractErrorMsg(genErr);
+                    lastError = new Error(genErrMsg);
+                    console.warn(`generateContent failed for ${model}:`, genErrMsg);
+                    if (genErrMsg.includes('API key') || genErrMsg.includes('API_KEY_INVALID') || genErrMsg.includes('403')) {
+                        throw lastError;
+                    }
                 }
             }
         }
@@ -189,8 +219,32 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
         console.error('Error in rate.js:', error);
 
         return res.status(500).json({
-            error: error.message || 'Failed to analyze image',
-            details: error.message || 'Unknown server error'
+            error: extractErrorMsg(error),
+            details: error.stack || error.message || 'Unknown server error'
         });
     }
+}
+
+/**
+ * Safely extracts human-readable error messages from SDK and API error objects
+ */
+function extractErrorMsg(err) {
+    if (!err) return 'Unknown error occurred';
+    if (typeof err === 'string') return err;
+    if (err.body) {
+        try {
+            const parsed = JSON.parse(err.body);
+            const msg = (Array.isArray(parsed) ? parsed[0]?.error?.message : parsed?.error?.message);
+            if (msg) return msg;
+        } catch (e) {}
+    }
+    if (err.message) {
+        try {
+            const parsed = JSON.parse(err.message);
+            const msg = parsed?.error?.message || parsed?.message;
+            if (msg) return msg;
+        } catch (e) {}
+        return err.message;
+    }
+    return String(err);
 }
