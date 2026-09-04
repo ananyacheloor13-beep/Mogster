@@ -1,12 +1,6 @@
 {
-  "buildCommand": "npm run build",
-  "outputDirectory": "dist",
-  "env": {
-    "GEMINI_API_KEY": "@gemini_api_key"
-  },
   "functions": {
     "api/rate.js": {
-      "memory": 1024,
       "maxDuration": 30
     }
   }

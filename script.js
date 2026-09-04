@@ -349,6 +349,7 @@ let statusInterval = null;
 let currentRating = 0;
 let currentImageData = null;
 let currentIndicators = [];
+let currentApiResponse = null; // Store real API response
 
 // Handle file upload
 photoInput.addEventListener('change', (e) => {
@@ -360,7 +361,7 @@ photoInput.addEventListener('change', (e) => {
             const imageData = event.target.result;
             currentImageData = imageData;
             resultImage.src = imageData;
-            startAnalysis();
+            startAnalysis(imageData, file.type);
         };
         reader.readAsDataURL(file);
     }
@@ -395,7 +396,7 @@ clearLeaderboardBtn.addEventListener('click', () => {
     }
 });
 
-function startAnalysis() {
+async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     // Hide upload, show loading
     uploadSection.classList.add('hidden');
     loadingSection.classList.remove('hidden');
@@ -406,32 +407,119 @@ function startAnalysis() {
     // Clear previous indicators
     indicatorsList.innerHTML = '';
     
-    // Select random indicators for this analysis
-    const rating = getRandomRating();
-    currentRating = rating;
-    currentIndicators = selectRandomIndicators();
+    try {
+        // Convert DataURL to base64 (remove 'data:image/...;base64,' prefix)
+        const base64Image = imageDataUrl.split(',')[1];
+        
+        // Call the API with timeout
+        const analysisData = await fetchAnalysisWithTimeout(base64Image, mimeType, 30000); // 30 second timeout
+        
+        // Store the API response
+        currentApiResponse = analysisData;
+        currentRating = analysisData.score;
+        
+        // Convert API clinical findings to a display format
+        const findings = analysisData.clinicalFindings || [];
+        
+        // Display clinical findings one by one
+        let displayIndex = 0;
+        const displayInterval = setInterval(() => {
+            if (displayIndex < findings.length) {
+                const finding = findings[displayIndex];
+                const fullLine = `${finding.indicator}: ${finding.note}`;
+                
+                const itemDiv = document.createElement('div');
+                itemDiv.className = 'indicator-item';
+                itemDiv.innerHTML = `<span class="indicator-verdict">${fullLine}</span>`;
+                indicatorsList.appendChild(itemDiv);
+                
+                displayIndex++;
+            } else {
+                clearInterval(displayInterval);
+                // After all findings displayed, wait a moment then show name input
+                setTimeout(() => {
+                    showNameInput();
+                }, 800);
+            }
+        }, 500);
+        
+    } catch (error) {
+        console.error('Analysis error:', error);
+        
+        // Show error message in loading section
+        indicatorsList.innerHTML = '';
+        const errorDiv = document.createElement('div');
+        errorDiv.className = 'indicator-item';
+        errorDiv.style.color = '#d32f2f';
+        errorDiv.innerHTML = `<span class="indicator-verdict">${error.message}</span>`;
+        indicatorsList.appendChild(errorDiv);
+        
+        // Show retry button
+        setTimeout(() => {
+            const retryBtn = document.createElement('button');
+            retryBtn.textContent = 'Try Again';
+            retryBtn.style.marginTop = '20px';
+            retryBtn.style.padding = '10px 20px';
+            retryBtn.style.cursor = 'pointer';
+            retryBtn.style.backgroundColor = '#667eea';
+            retryBtn.style.color = 'white';
+            retryBtn.style.border = 'none';
+            retryBtn.style.borderRadius = '8px';
+            retryBtn.style.fontSize = '1em';
+            retryBtn.addEventListener('click', () => {
+                uploadSection.classList.remove('hidden');
+                loadingSection.classList.add('hidden');
+                photoInput.value = '';
+            });
+            indicatorsList.appendChild(retryBtn);
+        }, 500);
+    }
+}
+
+/**
+ * Fetch analysis from /api/rate with timeout
+ * @param {string} base64Image - Base64-encoded image without prefix
+ * @param {number} timeoutMs - Timeout in milliseconds
+ * @returns {Promise<Object>} - Analysis response with score, clinicalFindings, verdict
+ */
+async function fetchAnalysisWithTimeout(base64Image, mimeType, timeoutMs) {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
     
-    // Display indicators one by one
-    let displayIndex = 0;
-    const displayInterval = setInterval(() => {
-        if (displayIndex < currentIndicators.length) {
-            const indicator = currentIndicators[displayIndex];
-            const fullLine = indicator.generate(currentRating);
-            
-            const itemDiv = document.createElement('div');
-            itemDiv.className = 'indicator-item';
-            itemDiv.innerHTML = `<span class="indicator-verdict">${fullLine}</span>`;
-            indicatorsList.appendChild(itemDiv);
-            
-            displayIndex++;
-        } else {
-            clearInterval(displayInterval);
-            // After all indicators displayed, wait a moment then show name input
-            setTimeout(() => {
-                showNameInput();
-            }, 800);
+    try {
+        const response = await fetch('/api/rate', {
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ image: base64Image, mimeType: mimeType || 'image/jpeg' }),
+            signal: controller.signal
+        });
+        
+        clearTimeout(timeoutId);
+        
+        if (!response.ok) {
+            const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+            throw new Error(errorData.error || `API error: ${response.status}`);
         }
-    }, 500);
+        
+        const data = await response.json();
+        
+        // Validate response structure
+        if (!data.score || !data.clinicalFindings || !data.verdict) {
+            throw new Error('Invalid response format from server');
+        }
+        
+        return data;
+    } catch (error) {
+        clearTimeout(timeoutId);
+        
+        if (error.name === 'AbortError') {
+            throw new Error('Request timed out. Please check your connection and try again.');
+        }
+        
+        throw new Error(error.message || 'Failed to analyze image. Please try again.');
+    }
 }
 
 function getRandomRating() {
@@ -463,9 +551,6 @@ function generateAnalysisReport(rating, indicators) {
 }
 
 function showNameInput() {
-    const rating = getRandomRating();
-    currentRating = rating;
-    
     loadingSection.classList.add('hidden');
     nameInputSection.classList.remove('hidden');
     mogName.focus();
@@ -670,38 +755,66 @@ function generateVerdictParagraph(name, score, indicators) {
 function saveAndShowResults() {
     const name = mogName.value.trim() || 'Mystery Mog';
     
-    // Generate full verdict paragraph that references each indicator
-    const verdictParagraph = generateVerdictParagraph(name, currentRating, currentIndicators);
-    
-    // Create formatted explanation with two sections
+    // Use real API response if available, otherwise fall back to fake data
     let explanationText = `<strong>SECTION 1: MORPHOMETRIC ASSESSMENT REPORT</strong><br><br>`;
     
-    // Section 1: Use structured format for clean layout
-    currentIndicators.forEach(ind => {
-        const structured = ind.generateStructured(currentRating);
-        explanationText += `
-            <div class="indicator-block">
-                <div class="indicator-header">
-                    <span class="indicator-name">${structured.name}</span>
-                    <span class="indicator-value">${structured.value}</span>
+    if (currentApiResponse) {
+        // Display real clinical findings from API response
+        const findings = currentApiResponse.clinicalFindings || [];
+        findings.forEach(finding => {
+            explanationText += `
+                <div class="indicator-block">
+                    <div class="indicator-header">
+                        <span class="indicator-name">${finding.indicator}</span>
+                        <span class="indicator-value">${finding.value}</span>
+                    </div>
+                    <div class="indicator-description">${finding.note}</div>
                 </div>
-                <div class="indicator-description">${structured.description}</div>
+            `;
+        });
+        
+        // Section 2: Use real verdict from API response
+        const verdict = currentApiResponse.verdict;
+        const sentences = verdict.split('. ');
+        let highlightedVerdict = sentences.slice(0, -1).join('. ') + '. ';
+        const punchline = sentences[sentences.length - 1];
+        highlightedVerdict += `<span class="verdict-punchline">${punchline}</span>`;
+        
+        explanationText += `
+            <div class="section-2-card">
+                <h3 class="section-2-heading">💀 SECTION 2: VERDICT</h3>
+                <p class="section-2-text">${highlightedVerdict}</p>
             </div>
         `;
-    });
-    
-    // Section 2: Full verdict paragraph with distinct styling and highlighted punchline
-    const sentences = verdictParagraph.split('. ');
-    let highlightedVerdict = sentences.slice(0, -1).join('. ') + '. ';
-    const punchline = sentences[sentences.length - 1];
-    highlightedVerdict += `<span class="verdict-punchline">${punchline}</span>`;
-    
-    explanationText += `
-        <div class="section-2-card">
-            <h3 class="section-2-heading">💀 SECTION 2: VERDICT</h3>
-            <p class="section-2-text">${highlightedVerdict}</p>
-        </div>
-    `;
+    } else {
+        // Fallback to fake data (for backward compatibility if API fails)
+        const verdictParagraph = generateVerdictParagraph(name, currentRating, currentIndicators);
+        
+        currentIndicators.forEach(ind => {
+            const structured = ind.generateStructured(currentRating);
+            explanationText += `
+                <div class="indicator-block">
+                    <div class="indicator-header">
+                        <span class="indicator-name">${structured.name}</span>
+                        <span class="indicator-value">${structured.value}</span>
+                    </div>
+                    <div class="indicator-description">${structured.description}</div>
+                </div>
+            `;
+        });
+        
+        const sentences = verdictParagraph.split('. ');
+        let highlightedVerdict = sentences.slice(0, -1).join('. ') + '. ';
+        const punchline = sentences[sentences.length - 1];
+        highlightedVerdict += `<span class="verdict-punchline">${punchline}</span>`;
+        
+        explanationText += `
+            <div class="section-2-card">
+                <h3 class="section-2-heading">💀 SECTION 2: VERDICT</h3>
+                <p class="section-2-text">${highlightedVerdict}</p>
+            </div>
+        `;
+    }
     
     // Save to leaderboard
     saveToLeaderboard(name, currentRating, currentImageData);

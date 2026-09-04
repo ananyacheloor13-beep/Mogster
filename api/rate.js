@@ -11,7 +11,8 @@ export default async function handler(req, res) {
     }
 
     try {
-        const { image } = req.body;
+        const body = typeof req.body === 'string' ? JSON.parse(req.body) : (req.body || {});
+        const { image, mimeType = 'image/jpeg' } = body;
 
         // Validate input
         if (!image) {
@@ -22,14 +23,26 @@ export default async function handler(req, res) {
         const apiKey = process.env.GEMINI_API_KEY;
         if (!apiKey) {
             console.error('GEMINI_API_KEY environment variable not set');
-            return res.status(500).json({ error: 'Server configuration error: API key not found' });
+            return res.status(500).json({ error: 'Server configuration error: GEMINI_API_KEY environment variable not set in Vercel' });
         }
 
         // Call Gemini API with vision capabilities
-        const geminiResponse = await callGeminiAPI(image, apiKey);
+        const geminiResponse = await callGeminiAPI(image, apiKey, mimeType);
+
+        // Clean any markdown code blocks if present
+        let cleanedJson = geminiResponse.trim();
+        if (cleanedJson.startsWith('```json')) {
+            cleanedJson = cleanedJson.slice(7);
+        } else if (cleanedJson.startsWith('```')) {
+            cleanedJson = cleanedJson.slice(3);
+        }
+        if (cleanedJson.endsWith('```')) {
+            cleanedJson = cleanedJson.slice(0, -3);
+        }
+        cleanedJson = cleanedJson.trim();
 
         // Parse and validate the response
-        const analysisResult = JSON.parse(geminiResponse);
+        const analysisResult = JSON.parse(cleanedJson);
 
         // Validate response structure
         if (!analysisResult.score || !analysisResult.clinicalFindings || !analysisResult.verdict) {
@@ -63,7 +76,7 @@ export default async function handler(req, res) {
  * @param {string} apiKey - The Gemini API key
  * @returns {Promise<string>} - The JSON response from Gemini
  */
-async function callGeminiAPI(base64Image, apiKey) {
+async function callGeminiAPI(base64Image, apiKey, mimeType = 'image/jpeg') {
     const GEMINI_API_URL = 'https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent';
 
     const prompt = `You are "The Mog Judge" - a brutally honest facial analyst who applies beauty standards absurdly but with genuine visual grounding. Analyze ONLY what you see in this image.
@@ -116,7 +129,7 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
                     },
                     {
                         inlineData: {
-                            mimeType: 'image/jpeg',
+                            mimeType: mimeType || 'image/jpeg',
                             data: base64Image
                         }
                     }
@@ -126,7 +139,8 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
         generationConfig: {
             temperature: 0.7,
             topP: 0.95,
-            maxOutputTokens: 1024
+            maxOutputTokens: 1024,
+            responseMimeType: 'application/json'
         }
     };
 
