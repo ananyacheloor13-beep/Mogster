@@ -437,6 +437,27 @@ clearLeaderboardBtn.addEventListener('click', () => {
     }
 });
 
+// Rotating facial analysis captions for the loading screen
+const loadingCaptions = [
+    "Measuring forehead to jaw distance...",
+    "Analyzing canthal tilt...",
+    "Measuring upper lid exposure...",
+    "Evaluating eyebrow position...",
+    "Scanning cheekbone prominence...",
+    "Assessing hollow cheeks...",
+    "Computing midface ratio...",
+    "Measuring jawline definition...",
+    "Calculating gonial angle...",
+    "Analyzing chin projection...",
+    "Evaluating mandible-to-maxilla ratio...",
+    "Checking facial symmetry...",
+    "Assessing facial thirds proportion...",
+    "Scanning nose bridge and projection...",
+    "Analyzing surface texture and dermis quality...",
+    "Cross-referencing facial harmony metrics...",
+    "Synthesizing morphometric verdict..."
+];
+
 async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     // Hide upload, show loading
     uploadSection.classList.add('hidden');
@@ -448,6 +469,29 @@ async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     // Clear previous indicators
     indicatorsList.innerHTML = '';
     
+    // Start rotating captions immediately and keep cycling while request is pending
+    let captionIndex = 0;
+    function displayNextCaption() {
+        const caption = loadingCaptions[captionIndex % loadingCaptions.length];
+        captionIndex++;
+        
+        const itemDiv = document.createElement('div');
+        itemDiv.className = 'indicator-item';
+        itemDiv.innerHTML = `<span class="indicator-verdict">${caption}</span>`;
+        indicatorsList.appendChild(itemDiv);
+        
+        // Keep the latest 5 visible so the container doesn't overflow
+        if (indicatorsList.children.length > 5) {
+            indicatorsList.firstElementChild.remove();
+        }
+    }
+    
+    // Show first caption immediately
+    displayNextCaption();
+    
+    // Cycle captions every 600ms for as long as request is pending
+    const captionInterval = setInterval(displayNextCaption, 600);
+    
     try {
         // Convert DataURL to base64 (remove 'data:image/...;base64,' prefix safely)
         const base64Image = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1].trim() : imageDataUrl.trim();
@@ -455,36 +499,19 @@ async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
         // Call the API with timeout
         const analysisData = await fetchAnalysisWithTimeout(base64Image, mimeType, 30000); // 30 second timeout
         
+        // Stop caption cycling as soon as the real response arrives
+        clearInterval(captionInterval);
+        
         // Store the API response
         currentApiResponse = analysisData;
         currentRating = analysisData.score;
         
-        // Convert API clinical findings to a display format
-        const findings = analysisData.clinicalFindings || [];
-        
-        // Display clinical findings one by one
-        let displayIndex = 0;
-        const displayInterval = setInterval(() => {
-            if (displayIndex < findings.length) {
-                const finding = findings[displayIndex];
-                const fullLine = `${finding.indicator}: ${finding.note}`;
-                
-                const itemDiv = document.createElement('div');
-                itemDiv.className = 'indicator-item';
-                itemDiv.innerHTML = `<span class="indicator-verdict">${fullLine}</span>`;
-                indicatorsList.appendChild(itemDiv);
-                
-                displayIndex++;
-            } else {
-                clearInterval(displayInterval);
-                // After all findings displayed, wait a moment then show name input
-                setTimeout(() => {
-                    showNameInput();
-                }, 800);
-            }
-        }, 500);
+        // Move to name input screen (which leads to results screen)
+        showNameInput();
         
     } catch (error) {
+        // Stop caption cycling on error
+        clearInterval(captionInterval);
         console.error('Analysis error:', error);
         
         // Show detailed error message in loading section
