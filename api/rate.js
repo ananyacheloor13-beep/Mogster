@@ -26,18 +26,35 @@ export default async function handler(req, res) {
 
         try {
             const ai = new GoogleGenAI({ apiKey });
-            // Verify key works with Gemini 2.0 Flash
+            let availableModels = [];
+            try {
+                const listPager = await ai.models.list();
+                for await (const m of listPager) {
+                    const name = (m.name || '').replace(/^models\//, '');
+                    availableModels.push(name);
+                }
+            } catch (listErr) {
+                console.warn('Could not query models in healthcheck:', listErr.message);
+            }
+
+            // Test key with gemini-2.5-flash or first available flash model
+            const testModel = availableModels.find(m => m.includes('2.5') && m.includes('flash'))
+                || availableModels.find(m => m.includes('flash'))
+                || 'gemini-2.5-flash';
+
             const testResponse = await ai.models.generateContent({
-                model: 'gemini-2.0-flash',
+                model: testModel,
                 contents: 'Respond with "pong"'
             });
 
             return res.status(200).json({
                 status: 'ok',
-                message: 'Gemini API key is configured and verified with gemini-2.0-flash!',
+                message: `Gemini API key is configured and verified with ${testModel}!`,
                 hasKey: true,
                 keyPrefix: apiKey.slice(0, 6) + '...',
-                pingResponse: testResponse.text?.trim()
+                verifiedModel: testModel,
+                pingResponse: testResponse.text?.trim(),
+                availableModels: availableModels.slice(0, 15)
             });
         } catch (err) {
             return res.status(200).json({
@@ -121,15 +138,47 @@ Return your response as VALID JSON ONLY (no markdown, no explanations) with this
 
 Do not include any text outside the JSON. Respond with only valid JSON.`;
 
-        // Supported Gemini multimodal models (primary: 2.0 Flash for ultra-fast response, fallback: 1.5 Flash)
-        const modelsToTry = [
+        // Dynamically query available models to pick an active, supported model
+        let dynamicModels = [];
+        try {
+            const listPager = await ai.models.list();
+            for await (const m of listPager) {
+                const name = (m.name || '').replace(/^models\//, '');
+                const methods = m.supportedGenerationMethods || [];
+                if (methods.length === 0 || methods.includes('generateContent')) {
+                    dynamicModels.push(name);
+                }
+            }
+        } catch (listErr) {
+            console.warn('Could not query models.list:', listErr.message);
+        }
+
+        // Standard known models in order of priority (primary: 2.5 Flash, 2.0 Flash)
+        const fallbackList = [
             process.env.GEMINI_MODEL,
+            'gemini-2.5-flash',
             'gemini-2.0-flash',
+            'gemini-2.5-flash-lite',
+            'gemini-3.8-flash',
+            'gemini-3.7-flash',
+            'gemini-1.5-flash-latest',
+            'gemini-1.5-flash-8b',
             'gemini-1.5-flash'
         ].filter(Boolean);
 
+        // Prioritize: custom env model -> discovered 2.5 flash -> other discovered flash -> fallback models
+        const modelsToTry = Array.from(new Set([
+            process.env.GEMINI_MODEL,
+            ...dynamicModels.filter(m => m.includes('2.5') && m.includes('flash')),
+            ...dynamicModels.filter(m => m.includes('flash')),
+            ...fallbackList,
+            ...dynamicModels
+        ].filter(Boolean)));
+
+        console.log('Candidate models to try:', modelsToTry);
+
         let responseText = '';
-        let lastError = null;
+        const attemptedErrors = [];
 
         for (const model of modelsToTry) {
             try {
@@ -157,18 +206,20 @@ Do not include any text outside the JSON. Respond with only valid JSON.`;
                 }
             } catch (err) {
                 const errMsg = extractErrorMsg(err);
-                lastError = new Error(errMsg);
+                attemptedErrors.push({ model, error: errMsg });
                 console.warn(`generateContent failed for ${model}:`, errMsg);
 
                 // If API key is rejected or invalid, fail immediately without trying remaining models
-                if (errMsg.includes('API key') || errMsg.includes('API_KEY_INVALID') || errMsg.includes('403')) {
-                    throw lastError;
+                if (errMsg.includes('API key not valid') || errMsg.includes('API_KEY_INVALID') || (errMsg.includes('403') && errMsg.includes('key'))) {
+                    throw new Error(errMsg);
                 }
             }
         }
 
-        if (!responseText && lastError) {
-            throw lastError;
+        if (!responseText) {
+            const firstError = attemptedErrors[0]?.error || 'Failed to generate analysis';
+            const details = attemptedErrors.map(e => `[${e.model}]: ${e.error}`).join('\n');
+            throw new Error(`${firstError}\n\nAttempted models:\n${details}`);
         }
 
         // Clean any markdown code blocks if present
