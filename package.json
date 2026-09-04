@@ -2,5 +2,8 @@
   "name": "mogster",
   "version": "1.0.0",
   "type": "module",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "@google/genai": "^2.21.0"
+  }
 }

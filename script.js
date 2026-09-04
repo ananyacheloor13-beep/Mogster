@@ -449,8 +449,8 @@ async function startAnalysis(imageDataUrl, mimeType = 'image/jpeg') {
     indicatorsList.innerHTML = '';
     
     try {
-        // Convert DataURL to base64 (remove 'data:image/...;base64,' prefix)
-        const base64Image = imageDataUrl.split(',')[1];
+        // Convert DataURL to base64 (remove 'data:image/...;base64,' prefix safely)
+        const base64Image = imageDataUrl.includes(',') ? imageDataUrl.split(',')[1].trim() : imageDataUrl.trim();
         
         // Call the API with timeout
         const analysisData = await fetchAnalysisWithTimeout(base64Image, mimeType, 30000); // 30 second timeout
