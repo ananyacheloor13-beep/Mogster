@@ -2,38 +2,37 @@
 
 
 
-# [Project Name] 🎯
+# Mogster 🎯
 
 
 ## Basic Details
-### Team Name: [Name]
+### Team Name: Cheesecake
 
 
 ### Team Members
-- Team Lead: [Name] - [College]
-- Member 2: [Name] - [College]
-- Member 3: [Name] - [College]
+- Member 1: Alex Sony - Sahrdaya College of Advanced Studies
+- Member 2: Ananya Manoj - Sahrdaya College of Advanced Studies
 
 ### Project Description
-[2-3 lines about what your project does]
+It brutally analyses the looks of random objects using human beauty standards.
 
 ### The Problem (that doesn't exist)
-[What ridiculous problem are you solving?]
+Human beings have Umax which is an app to rate their facial features out of 10, Dont objects also deserve the same advanced technology? Wouldnt objects also want to rate themselves and mog other objects? We believe this is a SERIOUS problem
 
 ### The Solution (that nobody asked for)
-[How are you solving it? Keep it fun!]
+We built exactly that. A website that judges every object's looks brutally, gives raw and unfiltered ratings to them, and explains exactly why they got that rating.
 
 ## Technical Details
 ### Technologies/Components Used
 For Software:
-- [Languages used]
+- HTML
 - [Frameworks used]
 - [Libraries used]
-- [Tools used]
+- VS Code
 
 For Hardware:
-- [List main components]
-- [List specifications]
+- Laptop
+- 
 - [List tools required]
 
 ### Implementation
